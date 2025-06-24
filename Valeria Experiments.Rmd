@@ -1,0 +1,67 @@
+---
+title: "Valeria code"
+output: html_notebook
+---
+
+
+# import packages
+
+```{r}
+library(tidyverse)
+library(lubridate)
+```
+
+
+# load data
+```{r}
+Light_Exp <- read_excel("Light_Exp.xlsx", 
+    col_types = c("date", "text", "text", 
+        "text", "text", "text", "text", "text", 
+        "text", "numeric", "numeric", "numeric", 
+        "text", "text", "text", "text", "text", 
+        "text", "text")) %>%
+      mutate(Start_time = format(as.POSIXct(Start_time * 86400, origin = "1970-01-01",  tz="America/Panama"), "%H:%M"),
+             End_time = format(as.POSIXct(End_time * 86400, origin = "1970-01-01",  tz="America/Panama"), "%H:%M"),
+             Interaction_Start_Time = as.POSIXct(Interaction_Start_Time, format = "%H:%M", tz = "America/Panama"), 
+             hour = hour(Interaction_Start_Time)) %>% #pull the hour from the start time 
+      #fix typo in experiment name 
+      mutate(Experiment = case_match(Experiment, 
+                                     "Over_Nat_light" ~ "Over_Nat_Light", 
+                                     .default = Experiment) )
+
+ 
+#show summary of columns             
+str(Light_Exp)
+
+```
+#summarize number of attacks per individual and experiment
+```{r}
+#need to convert ice king and maybe others to 23 hour timing 
+
+Light_summary <- Light_Exp %>%
+      group_by(hour, Bat_Name, Experiment) %>%
+  summarise(n_attacks = n(), .groups = "drop")
+```
+
+#plot number of attacks in each hour in each experiment 
+
+```{r}
+Light_summary %>%
+      ggplot(., aes(x = factor(hour), y = n_attacks, fill = Experiment)) + #fill = Bat_Name
+  geom_col(position = "stack") +
+  #facet_wrap(~ Bat_Name, scales = "free_y") + #turn on to facet by bat 
+  # facet_wrap(~ Experiment, scales = "free_y") + #turn on to facet by experiment
+  scale_x_discrete(
+    name = "Hour of Day",
+    breaks = c("23", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
+  ) +
+  ylab("Number of Attacks") +
+  labs(fill = "Experiment") +
+  theme_classic()
+
+
+#need to fix times 
+#need to fix scale- add missing values 
+```
+
+
