@@ -1,0 +1,298 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+# packages
+```{r}
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(ordinal)
+library(emmeans)
+library(lme4)
+```
+
+```{r}
+###palette controls for plotting colors, controls all plots
+
+
+# Define color palette for groups outside the plot (put here so you can control later)
+my_day_colors <- c(
+  "1" = "#1f78b4",   # Nice blue
+  "2" = "#6a3d9a",   # Violet
+  "3" = "#fb9a99"    # Pink
+)
+
+# 
+
+```
+
+
+
+Mode Function
+```{r}
+Mode <- function(x, na.rm = FALSE) {
+  if(na.rm){
+    x = x[!is.na(x)]
+  }
+
+  ux <- unique(x)
+  return(ux[which.max(tabulate(match(x, ux)))])
+}
+```
+
+
+
+```{r}
+
+#read in the data
+
+
+Roost_Data <- read_excel("Roost Data.xlsx", 
+    sheet = "ABC Scores aligned TEMP", col_types = c("text", 
+        "numeric", "text", "numeric", "text")) %>%
+      mutate(
+     # Convert from character to numeric       
+    Time= as.numeric(Time),
+    #make time read as time 
+    Time = format(as.POSIXct(Time * 86400, origin = "1970-01-01",  tz="America/Panama"), "%H:%M") 
+   
+  ) %>%
+      
+      #rename number of videos 
+      rename(n_videos = `# of videos`) %>%
+      mutate(n_videos = as.numeric(n_videos), 
+             Score = as.numeric(Score)) %>%
+      
+            filter(!is.na(Score)) %>%#filter out rows with NAs
+  
+  # Separate Trial into treatments, roost, and day 
+  separate(Trial, into = c("Roost", "Treatment", "Day"), sep = "-", remove = FALSE)  %>%
+      # Make Treatments names better
+      mutate(Treatment = case_match( Treatment, 
+                                 "S" ~ "Silence", 
+                                 "H" ~ "Humans", 
+                                 "T" ~ "Traffic"),
+     #Use this line to oder 
+             Treatment = factor(Treatment,
+                              levels = c(
+                                "Silence",
+                                "Humans",
+                                "Traffic"
+                                     ),
+                        ordered = TRUE)
+                         )
+      
+
+
+# Read in trial attributes
+
+Roost_attributes <- read_excel("Roost Data.xlsx")
+# View(Roost_attributes)
+
+#left join roost attributes to get environmental data for each trial
+
+
+str(Roost_Data)
+```
+# Summarize data
+
+```{r}
+
+
+Roost_summary <- Roost_Data %>%
+      group_by(Roost, Trial, Treatment, Day) %>%
+      summarize(n_videos= Mode(n_videos, na.rm = TRUE), # # of videos
+                median = median(Score), #Median score
+                max = max(Score), 
+                Mode = Mode(Score),  #Modal score
+                sum_score = sum(Score)) %>%  #change in sum(n_videos) to average when this fills in 
+      mutate(disturbance_index = sum_score/n_videos)  #Summed all the ordinal behaviors/ # of videos 
+
+Roost_summary
+
+
+Roost_summary_SE <- Roost_summary %>%
+  group_by(Treatment, Day) %>%
+  summarize(
+    mean_disturbance = mean(disturbance_index, na.rm = TRUE),
+    se_disturbance = sd(disturbance_index, na.rm = TRUE) / sqrt(n()),# Standard Error
+    mean_mode = mean(Mode, na.rm = TRUE), 
+    se_mode = sd(Mode, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+```
+
+
+
+# Grouped bar plot for the responses to the three treatments over three days
+```{r}
+
+# Define color palette for groups outside the plot (put here so you can control later)
+
+my_day_colors <- c(
+  "1" = "#1f78b4",   # Nice blue
+  "2" = "#6a3d9a",   # Violet
+  "3" = "#fb9a99"    # Pink
+)
+
+
+
+# Movement index
+ggplot(Roost_summary_SE, aes(x = Treatment, y = mean_disturbance, fill = Day)) +
+  geom_col(position = position_dodge(width = 0.9)) +     # Make bar chart
+  geom_errorbar(aes(ymin = mean_disturbance - se_disturbance,   # Add in error bats 
+                    ymax = mean_disturbance + se_disturbance),
+                position = position_dodge(width = 0.9),
+                width = 0.2) +
+  geom_point(data = Roost_summary,  # Add in points from each trial over top 
+             aes(x = Treatment, y = disturbance_index),
+             position = position_jitterdodge(jitter.width = 0.1, dodge.width = .9),
+             alpha = 0.6,
+             size = 2) +
+  theme_minimal() +  #make color theme
+  scale_fill_manual(values = my_day_colors) +
+  ylab("Movement index") +  # Add x axis label
+  xlab("Sound Treatment")   # Add y axis label
+
+ggsave("Movement_index_plot.pdf")
+
+
+#Mode
+ggplot(Roost_summary_SE, aes(x = Treatment, y = mean_mode, fill = Day)) +
+  geom_col(position = position_dodge(width = 0.9)) +     # Make bar chart
+  geom_errorbar(aes(ymin = mean_disturbance - se_mode,   # Add in error bats 
+                    ymax = mean_disturbance + se_mode),
+                position = position_dodge(width = 0.9),
+                width = 0.2) +
+  geom_point(data = Roost_summary,  # Add in points from each trial over top 
+             aes(x = Treatment, y = disturbance_index),
+             position = position_jitterdodge(jitter.width = 0.1, dodge.width = .9),
+             alpha = 0.6,
+             size = 2) +
+  theme_minimal() +  #make color theme
+  scale_fill_manual(values = my_day_colors) +
+  ylab("Mode") +  # Add x axis label
+  xlab("Sound Treatment")   # Add y axis label
+
+
+
+
+
+```
+
+
+
+
+#make plot showing frequencies of each score (this isa  total, might be good to normalize between roosts, control for the differences between roosts )
+```{r}
+#y= frequency x = scores 
+
+#palette for humans treatment
+my_treatment_colors <- c(
+  "Silence" = "#1dd3b0",  # Turquoise
+  "Humans"  = "#76c893",  # Soft Green
+  "Traffic" = "#ffd166"   # Warm Yellow
+)
+
+
+Roost_Data %>%
+      mutate(Score = case_match(
+      Score,
+      1 ~ "Ear Twitches",
+      2 ~ "Moved location - walking",
+      3 ~ "1 or 2 Flying",
+      4 ~ ">1/2 Flying",
+      5 ~ "Abandoning roost",
+      .default = NA_character_
+    ),
+    Score = factor(
+      Score,
+      levels = c(
+        "Ear Twitches",
+        "Moved location - walking",
+        "1 or 2 Flying",
+        ">1/2 Flying",
+        "Abandoning roost"
+      ),
+      ordered = TRUE
+    )
+  ) %>%
+     ggplot(aes(x = Score, fill = Treatment)) +
+  geom_bar() +  # Use geom_bar for categorical/factor x-axis
+  facet_wrap(~Treatment, dir = "v") +
+  theme_minimal() +
+  scale_fill_manual(values = my_treatment_colors) +
+  xlab("Behavior Score") +
+  ylab("Count") +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1)) 
+
+ggsave("behavior_frequencies_plot.pdf")
+                                
+                        
+                              
+
+```
+
+
+# Are there significant differences between treatment and day? 
+```{r}
+
+# Model : Score ~ treatment*day (1|roost)
+Roost_Data_Stats <- Roost_Data %>%
+  mutate(
+    Score = factor(Score, ordered = TRUE),  # ordinal response
+    Day = factor(Day, ordered = TRUE),                      # ordinal predictor
+    Roost = factor(Roost),                   # grouping factor
+    Treatment = factor(Treatment)
+  ) 
+  
+  model <- clmm(Score ~ Treatment * Day + (1 | Roost), data = Roost_Data_Stats)
+summary(model)
+
+model_no_interaction <- clmm(Score ~ Treatment + Day + (1 | Roost), data = Roost_Data_Stats)
+
+anova(model, model_no_interaction)  # Likelihood Ratio Test
+
+emmeans(model, ~ Treatment)
+
+
+emmeans(model, ~ Treatment | Day)  # Treatment effects within each Day
+# or
+emmeans(model, ~ Day | Treatment)  # Day effects within each Treatment
+
+plot(emmeans(model, ~ Treatment | Day, mode = "prob"))
+
+
+
+
+# Model : Score ~ treatment*day (1|roost)
+Roost_summary_stats <- Roost_summary %>%
+  mutate(
+    Day = factor(Day, ordered = TRUE),                      # ordinal predictor
+    Roost = factor(Roost),                   # grouping factor
+    Treatment = factor(Treatment)
+  ) 
+  
+  model2 <- glmer(disturbance_index ~ Treatment * Day + (1 | Roost), data = Roost_summary_stats)
+summary(model2)
+
+model_no_interaction <- glmer(disturbance_index ~ Treatment + Day + (1 | Roost), data = Roost_summary_stats)
+
+anova(model, model_no_interaction)  # Likelihood Ratio Test
+
+emmeans(model, ~ Treatment)
+
+
+emmeans(model, ~ Treatment | Day)  # Treatment effects within each Day
+# or
+emmeans(model, ~ Day | Treatment)  # Day effects within each Treatment
+
+plot(emmeans(model, ~ Treatment | Day, mode = "prob"))
+
+```
+
+
+
