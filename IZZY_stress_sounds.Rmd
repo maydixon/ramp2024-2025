@@ -240,7 +240,13 @@ ggsave("behavior_frequencies_plot.pdf")
 # Are there significant differences between treatment and day? 
 ```{r}
 
-# Model : Score ~ treatment*day (1|roost)
+#what is the distribution of the scores? 
+hist(Roost_Data$Score)
+# data have a kind of weird distribution
+
+
+
+# Possible Model : Score ~ treatment*day (1|roost)
 Roost_Data_Stats <- Roost_Data %>%
   mutate(
     Score = factor(Score, ordered = TRUE),  # ordinal response
