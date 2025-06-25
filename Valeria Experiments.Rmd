@@ -27,7 +27,12 @@ Light_Exp <- read_excel("Light_Exp.xlsx",
       #fix typo in experiment name 
       mutate(Experiment = case_match(Experiment, 
                                      "Over_Nat_light" ~ "Over_Nat_Light", 
-                                     .default = Experiment) )
+                                     .default = Experiment) ) %>%
+      mutate(Experiment = case_match(Experiment, 
+                                     "Over_Nat_Light" ~ "Natural Light",
+                                     "Over_Nat_Dark" ~ "Dark", 
+                                     "Over_Partial_Dark" ~ "Partial Dark",
+                                     .default = Experiment)) 
 
  
 #show summary of columns             
@@ -39,22 +44,50 @@ str(Light_Exp)
 #need to convert ice king and maybe others to 23 hour timing 
 
 Light_summary <- Light_Exp %>%
+      #remove NAs from interaction score
+      filter(!is.na(Interaction_Score)) %>%
+      #keep only hovers and attacks 
+      filter(!is.na(Anolis_Behavior)) %>%
       group_by(hour, Bat_Name, Experiment) %>%
-  summarise(n_attacks = n(), .groups = "drop")
+  summarise(n_attacks = n(), .groups = "drop") %>%
+      filter(!is.na(hour))
+
+Light_summary
 ```
+# make palette
+```{r}
+
+#make palette with color values you want, outside your plot 
+my_colors <- c(
+  "Over_Nat_Light" = "#1f78b4",   # Nice blue
+  "Over_Nat_Dark" = "#6a3d9a"   # Violet
+
+)
+
+#add this line to your plot
++ scale_fill_manual(values = my_colors) 
+```
+
 
 #plot number of attacks in each hour in each experiment 
 
 ```{r}
-Light_summary %>%
+
+full_hours <-  c(22,23,24, 0:10)
+
+ Light_summary %>%
+       
+   #add in hours with 0 attacks for each bat, for plotting     
+ # complete(hour = full_hours, Experiment, Bat_Name, fill = list(n_attacks = 0)) %>%
+
       ggplot(., aes(x = factor(hour), y = n_attacks, fill = Experiment)) + #fill = Bat_Name
   geom_col(position = "stack") +
   #facet_wrap(~ Bat_Name, scales = "free_y") + #turn on to facet by bat 
   # facet_wrap(~ Experiment, scales = "free_y") + #turn on to facet by experiment
-  scale_x_discrete(
-    name = "Hour of Day",
-    breaks = c("23", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
-  ) +
+  # scale_x_discrete(
+  #   name = "Hour of Day",
+  #   breaks = c("23", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
+  # ) +
   ylab("Number of Attacks") +
   labs(fill = "Experiment") +
   theme_classic()
@@ -64,4 +97,23 @@ Light_summary %>%
 #need to fix scale- add missing values 
 ```
 
+
+```{r}
+palette_movement <- 
+       c(
+  "Over_Nat_Light" = "#1f78b4",   # Nice blue
+  "Over_Nat_Dark" = "#6a3d9a"   # Violet
+
+)
+
+
+Light_Exp %>%
+      #remove NAs from interaction score
+      filter(!is.na(Interaction_Score)) %>%
+      #keep only hovers and attacks 
+      filter(Anolis_Behavior != "NA") %>%
+      droplevels() %>%
+      ggplot(., aes(x= Anolis_Behavior)) + 
+      geom_bar()
+```
 
